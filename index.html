@@ -2,110 +2,278 @@
 <html>
 <head>
 <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Pico MQTT Dashboard</title>
 
 <style>
-  body {
-    background: #0f1115;
-    color: #e6e6e6;
-    font-family: Arial, sans-serif;
-    padding: 20px;
-  }
+body {
+  background: #ffffff;
+  color: #222;
+  font-family: Arial, sans-serif;
+  padding: 20px;
 
-  h2 {
-    color: #ffffff;
-  }
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
 
-  .card {
-    background: #1a1f2b;
-    padding: 15px;
-    border-radius: 10px;
-    width: 260px;
-    margin-top: 10px;
-  }
+h2 { text-align: center; }
 
-  .row {
-    display: flex;
-    justify-content: space-between;
-    margin: 6px 0;
-    font-size: 16px;
-  }
+.card {
+  background: #f5f5f5;
+  padding: 15px;
+  border-radius: 12px;
+  width: 100%;
+  max-width: 800px;
+  margin-bottom: 20px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+}
 
-  .label {
-    color: #aaa;
-  }
+.row {
+  display: flex;
+  justify-content: space-between;
+  margin: 6px 0;
+}
 
-  .up {
-    color: #ff4d4d;   /* 赤 */
-    font-weight: bold;
-  }
+.label { color: #555; }
 
-  .down {
-    color: #3dff7a;   /* 緑 */
-    font-weight: bold;
-  }
+/* 値変化 */
+.up { color: #ff3b30; font-weight: bold; }
+.down { color: #34c759; font-weight: bold; }
+.flat { color: #333; }
 
-  .flat {
-    color: #ffffff;
-  }
+/* ステータス */
+.sleep-on { color: #ff3b30; font-weight: bold; }
+.sleep-off { color: #34c759; font-weight: bold; }
+
+/* ボタン */
+button {
+  padding: 10px 18px;
+  margin: 10px 5px;
+  border: none;
+  border-radius: 20px;
+  cursor: pointer;
+}
+
+#sleepBtn { background: #ff3b30; color: white; }
+#wakeBtn { background: #34c759; color: white; }
+
+.hidden { display: none; }
+
+canvas {
+  background: #fafafa;
+  border-radius: 10px;
+  margin-top: 10px;
+  padding: 10px;
+}
 </style>
 </head>
 
 <body>
-<h2>Pico W Live Data</h2>
+
+<h2>Pico W MQTT Dashboard</h2>
 
 <div class="card">
   <div class="row"><span class="label">Temp</span><span id="temp">--</span></div>
   <div class="row"><span class="label">Hum</span><span id="hum">--</span></div>
-  <div class="row"><span class="label">V1</span><span id="v1">--</span></div>
-  <div class="row"><span class="label">V2</span><span id="v2">--</span></div>
-  <div class="row"><span class="label">V3</span><span id="v3">--</span></div>
+  <div class="row"><span class="label">AD1</span><span id="ad1">--</span></div>
+  <div class="row"><span class="label">AD2</span><span id="ad2">--</span></div>
+  <div class="row"><span class="label">AD3</span><span id="ad3">--</span></div>
+
+  <div class="row"><span class="label">Status</span><span id="sleep">--</span></div>
+  <div class="row"><span class="label">Last Update</span><span id="lastUpdate">--</span></div>
+</div>
+
+<button id="sleepBtn" onclick="sleepPico()">SLEEP</button>
+<button id="wakeBtn" class="hidden" onclick="wakePico()">WAKE</button>
+
+<!-- グラフ -->
+<div class="card">
+  <canvas id="envChart"></canvas>
+</div>
+
+<div class="card">
+  <canvas id="adChart"></canvas>
 </div>
 
 <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
 <script>
 const client = mqtt.connect("wss://broker.emqx.io:8084/mqtt");
 
-// 前回値保存
 let prev = {};
+let manualSleep = false;
+let lastMessageTime = Date.now();
+const SLEEP_TIMEOUT = 5000;
 
-function updateValue(id, newVal) {
+/* ===== 数値表示 ===== */
+function updateValue(id, val) {
   const el = document.getElementById(id);
-  const oldVal = prev[id];
+  const num = Number(val);
+  if (isNaN(num)) return;
 
   let cls = "flat";
-
-  if (oldVal !== undefined) {
-    if (newVal > oldVal) cls = "up";
-    else if (newVal < oldVal) cls = "down";
+  if (prev[id] !== undefined) {
+    if (num > prev[id]) cls = "up";
+    else if (num < prev[id]) cls = "down";
   }
 
   el.className = cls;
-  el.textContent = newVal.toFixed(2);
-
-  prev[id] = newVal;
+  el.textContent = num.toFixed(2);
+  prev[id] = num;
 }
 
+/* ===== ステータス ===== */
+function updateSleep(isSleep) {
+  const el = document.getElementById("sleep");
+  el.textContent = isSleep ? "SLEEPING" : "ACTIVE";
+  el.className = isSleep ? "sleep-on" : "sleep-off";
+
+  document.getElementById("sleepBtn").classList.toggle("hidden", isSleep);
+  document.getElementById("wakeBtn").classList.toggle("hidden", !isSleep);
+}
+
+/* ===== MQTT ===== */
+function sleepPico() {
+  client.publish("pico/cmd", "sleep");
+  manualSleep = true;
+  updateSleep(true);
+}
+
+function wakePico() {
+  client.publish("pico/cmd", "wake");
+  manualSleep = false;
+  updateSleep(false);
+}
+
+/* ===== ENVチャート（左温度・右湿度・同スケール） ===== */
+const envChart = new Chart(document.getElementById("envChart"), {
+  type: 'line',
+  data: {
+    labels: [],
+    datasets: [
+      {
+        label: "Temp (°C)",
+        data: [],
+        borderColor: "red",
+        yAxisID: "yTemp",
+        tension: 0.3,
+        pointRadius: 1
+      },
+      {
+        label: "Humidity (%)",
+        data: [],
+        borderColor: "blue",
+        yAxisID: "yHum",
+        tension: 0.3,
+        pointRadius: 1
+      }
+    ]
+  },
+  options: {
+    animation: false,
+    responsive: true,
+    scales: {
+      x: { display: false },
+
+      /* ★同じスケールにするポイント */
+      yTemp: {
+        type: "linear",
+        position: "left",
+        min: 0,
+        max: 100,
+        title: { display: true, text: "Temp (°C)" }
+      },
+
+      yHum: {
+        type: "linear",
+        position: "right",
+        min: 0,
+        max: 100,
+        grid: { drawOnChartArea: false },
+        title: { display: true, text: "Humidity (%)" }
+      }
+    }
+  }
+});
+
+/* ===== ADチャート ===== */
+const adChart = new Chart(document.getElementById("adChart"), {
+  type: 'line',
+  data: {
+    labels: [],
+    datasets: [
+      { label:"AD1", data:[], borderColor:"green", tension:0.3, pointRadius:1 },
+      { label:"AD2", data:[], borderColor:"orange", tension:0.3, pointRadius:1 },
+      { label:"AD3", data:[], borderColor:"purple", tension:0.3, pointRadius:1 }
+    ]
+  },
+  options: {
+    animation: false,
+    responsive: true,
+    scales: { x: { display: false } }
+  }
+});
+
+/* ===== 更新 ===== */
+function updateAdChart(arrs) {
+  if (!arrs) return;
+
+  adChart.data.labels = arrs[0].map((_, i) => i);
+
+  adChart.data.datasets.forEach((ds, i) => {
+    ds.data = arrs[i] || [];
+  });
+
+  adChart.update();
+}
+
+/* ===== MQTT受信 ===== */
 client.on("connect", () => {
-  console.log("connected");
   client.subscribe("pico/sensor");
 });
 
 client.on("message", (topic, message) => {
-  try {
-    const data = JSON.parse(message.toString());
+  const data = JSON.parse(message.toString());
 
-    updateValue("temp", data.temp);
-    updateValue("hum", data.hum);
-    updateValue("v1", data.v1);
-    updateValue("v2", data.v2);
-    updateValue("v3", data.v3);
+  lastMessageTime = Date.now();
 
-  } catch (e) {
-    console.log("parse error", e);
+  updateValue("temp", data.temp);
+  updateValue("hum", data.hum);
+  updateValue("ad1", data.ad1);
+  updateValue("ad2", data.ad2);
+  updateValue("ad3", data.ad3);
+
+  document.getElementById("lastUpdate").textContent =
+    new Date().toLocaleTimeString();
+
+  if (!manualSleep) updateSleep(false);
+
+  if (data.hist) {
+    envChart.data.labels = data.hist.temp.map((_, i) => i);
+
+    envChart.data.datasets[0].data = data.hist.temp;
+    envChart.data.datasets[1].data = data.hist.hum;
+
+    envChart.update();
+
+    updateAdChart([
+      data.hist.ad1,
+      data.hist.ad2,
+      data.hist.ad3
+    ]);
   }
 });
+
+/* ===== 自動スリープ ===== */
+setInterval(() => {
+  if (manualSleep) return;
+
+  if (Date.now() - lastMessageTime > SLEEP_TIMEOUT) {
+    updateSleep(true);
+  }
+}, 1000);
 </script>
 
 </body>

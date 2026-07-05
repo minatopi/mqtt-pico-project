@@ -16,7 +16,14 @@ body {
   flex-direction: column;
   align-items: center;
 }
-
+#lastUpdate {
+  width: 100%;
+  max-width: 800px;
+  text-align: right;
+  margin-top: -10px;
+  font-size: 12px;
+  color: #b0b0b0;
+}
 h2 { text-align: center; }
 
 .card {
@@ -40,7 +47,9 @@ h2 { text-align: center; }
 /* 値変化 */
 .up { color: #ff3b30; font-weight: bold; }
 .down { color: #34c759; font-weight: bold; }
-.flat { color: #333; }
+
+/* ★変更：flatも緑 */
+.flat { color: #34c759; font-weight: bold; }
 
 /* ステータス */
 .sleep-on { color: #ff3b30; font-weight: bold; }
@@ -79,11 +88,9 @@ canvas {
   <div class="row"><span class="label">AD1</span><span id="ad1">--</span></div>
   <div class="row"><span class="label">AD2</span><span id="ad2">--</span></div>
   <div class="row"><span class="label">AD3</span><span id="ad3">--</span></div>
-
   <div class="row"><span class="label">Status</span><span id="sleep">--</span></div>
-  <div class="row"><span class="label">Last Update</span><span id="lastUpdate">--</span></div>
 </div>
-
+<div id="lastUpdate">--</div>
 <button id="sleepBtn" onclick="sleepPico()">SLEEP</button>
 <button id="wakeBtn" class="hidden" onclick="wakePico()">WAKE</button>
 
@@ -107,7 +114,7 @@ let manualSleep = false;
 let lastMessageTime = Date.now();
 const SLEEP_TIMEOUT = 5000;
 
-/* ===== 数値表示 ===== */
+/* ===== 数値表示（単位＋.00削除） ===== */
 function updateValue(id, val) {
   const el = document.getElementById(id);
   const num = Number(val);
@@ -119,9 +126,19 @@ function updateValue(id, val) {
     else if (num < prev[id]) cls = "down";
   }
 
-  el.className = cls;
-  el.textContent = num.toFixed(2);
   prev[id] = num;
+
+  let unit = "";
+  if (id === "temp") unit = " °C";
+  if (id === "hum") unit = " %";
+  if (id.startsWith("ad")) unit = " V";
+
+  const formatted = Number.isInteger(num)
+    ? num
+    : parseFloat(num.toFixed(2));
+
+  el.className = cls;
+  el.textContent = formatted + unit;
 }
 
 /* ===== ステータス ===== */
@@ -134,7 +151,7 @@ function updateSleep(isSleep) {
   document.getElementById("wakeBtn").classList.toggle("hidden", !isSleep);
 }
 
-/* ===== MQTT ===== */
+/* ===== MQTT送信 ===== */
 function sleepPico() {
   client.publish("pico/cmd", "sleep");
   manualSleep = true;
@@ -147,7 +164,7 @@ function wakePico() {
   updateSleep(false);
 }
 
-/* ===== ENVチャート（左温度・右湿度・同スケール） ===== */
+/* ===== ENVチャート ===== */
 const envChart = new Chart(document.getElementById("envChart"), {
   type: 'line',
   data: {
@@ -177,7 +194,6 @@ const envChart = new Chart(document.getElementById("envChart"), {
     scales: {
       x: { display: false },
 
-      /* ★同じスケールにするポイント */
       yTemp: {
         type: "linear",
         position: "left",
@@ -216,7 +232,7 @@ const adChart = new Chart(document.getElementById("adChart"), {
   }
 });
 
-/* ===== 更新 ===== */
+/* ===== AD更新 ===== */
 function updateAdChart(arrs) {
   if (!arrs) return;
 

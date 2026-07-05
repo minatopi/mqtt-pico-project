@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Pico MQTT Dashboard</title>
+</head>
+<body>
+  <h2>Pico W Live Data</h2>
+  <div id="log"></div>
+
+  <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+  <script>
+    const client = mqtt.connect("wss://broker.emqx.io:8084/mqtt");
+
+    client.on("connect", () => {
+      document.getElementById("log").innerHTML += "connected<br>";
+      client.subscribe("test/pico");
+    });
+
+    client.on("message", (topic, message) => {
+      const div = document.getElementById("log");
+      div.innerHTML += message.toString() + "<br>";
+    });
+  </script>
+</body>
+</html>

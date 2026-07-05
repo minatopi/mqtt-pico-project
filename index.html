@@ -1,26 +1,112 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <meta charset="UTF-8">
-  <title>Pico MQTT Dashboard</title>
+<meta charset="UTF-8">
+<title>Pico MQTT Dashboard</title>
+
+<style>
+  body {
+    background: #0f1115;
+    color: #e6e6e6;
+    font-family: Arial, sans-serif;
+    padding: 20px;
+  }
+
+  h2 {
+    color: #ffffff;
+  }
+
+  .card {
+    background: #1a1f2b;
+    padding: 15px;
+    border-radius: 10px;
+    width: 260px;
+    margin-top: 10px;
+  }
+
+  .row {
+    display: flex;
+    justify-content: space-between;
+    margin: 6px 0;
+    font-size: 16px;
+  }
+
+  .label {
+    color: #aaa;
+  }
+
+  .up {
+    color: #ff4d4d;   /* 赤 */
+    font-weight: bold;
+  }
+
+  .down {
+    color: #3dff7a;   /* 緑 */
+    font-weight: bold;
+  }
+
+  .flat {
+    color: #ffffff;
+  }
+</style>
 </head>
+
 <body>
-  <h2>Pico W Live Data</h2>
-  <div id="log"></div>
+<h2>Pico W Live Data</h2>
 
-  <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
-  <script>
-    const client = mqtt.connect("wss://broker.emqx.io:8084/mqtt");
+<div class="card">
+  <div class="row"><span class="label">Temp</span><span id="temp">--</span></div>
+  <div class="row"><span class="label">Hum</span><span id="hum">--</span></div>
+  <div class="row"><span class="label">V1</span><span id="v1">--</span></div>
+  <div class="row"><span class="label">V2</span><span id="v2">--</span></div>
+  <div class="row"><span class="label">V3</span><span id="v3">--</span></div>
+</div>
 
-    client.on("connect", () => {
-      document.getElementById("log").innerHTML += "connected<br>";
-      client.subscribe("test/pico");
-    });
+<script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
 
-    client.on("message", (topic, message) => {
-      const div = document.getElementById("log");
-      div.innerHTML += message.toString() + "<br>";
-    });
-  </script>
+<script>
+const client = mqtt.connect("wss://broker.emqx.io:8084/mqtt");
+
+// 前回値保存
+let prev = {};
+
+function updateValue(id, newVal) {
+  const el = document.getElementById(id);
+  const oldVal = prev[id];
+
+  let cls = "flat";
+
+  if (oldVal !== undefined) {
+    if (newVal > oldVal) cls = "up";
+    else if (newVal < oldVal) cls = "down";
+  }
+
+  el.className = cls;
+  el.textContent = newVal.toFixed(2);
+
+  prev[id] = newVal;
+}
+
+client.on("connect", () => {
+  console.log("connected");
+  client.subscribe("pico/sensor");
+});
+
+client.on("message", (topic, message) => {
+  try {
+    const data = JSON.parse(message.toString());
+
+    updateValue("temp", data.temp);
+    updateValue("hum", data.hum);
+    updateValue("v1", data.v1);
+    updateValue("v2", data.v2);
+    updateValue("v3", data.v3);
+
+  } catch (e) {
+    console.log("parse error", e);
+  }
+});
+</script>
+
 </body>
 </html>

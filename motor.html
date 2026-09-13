@@ -1,0 +1,1381 @@
+
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+
+<meta charset="UTF-8">
+
+<meta
+    name="viewport"
+    content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"
+>
+
+<title>Motor Control</title>
+
+<script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+
+<style>
+
+* {
+    box-sizing: border-box;
+    -webkit-tap-highlight-color: transparent;
+}
+
+html,
+body {
+    margin: 0;
+    width: 100%;
+    min-height: 100%;
+    background: #080808;
+    color: white;
+    font-family:
+        -apple-system,
+        BlinkMacSystemFont,
+        "Segoe UI",
+        sans-serif;
+}
+
+body {
+    display: flex;
+    justify-content: center;
+}
+
+.container {
+    width: 100%;
+    max-width: 520px;
+    padding: 18px;
+}
+
+
+/* ============================================================
+   ヘッダー
+============================================================ */
+
+.header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 18px;
+}
+
+.title {
+    font-size: 24px;
+    font-weight: bold;
+}
+
+
+/* ============================================================
+   接続状態
+============================================================ */
+
+.connection {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: #151515;
+    border-radius: 20px;
+    padding: 8px 13px;
+    font-size: 13px;
+    color: #aaa;
+}
+
+.connection-dot {
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    background: #666;
+}
+
+.connection.connected {
+    color: #00e676;
+}
+
+.connection.connected .connection-dot {
+    background: #00e676;
+    box-shadow: 0 0 10px #00e676;
+}
+
+.connection.error {
+    color: #ff5252;
+}
+
+.connection.error .connection-dot {
+    background: #ff5252;
+}
+
+
+/* ============================================================
+   カード
+============================================================ */
+
+.card {
+    background: #151515;
+    border: 1px solid #252525;
+    border-radius: 18px;
+    padding: 20px;
+    margin-bottom: 15px;
+}
+
+
+/* ============================================================
+   速度
+============================================================ */
+
+.speed-title {
+    text-align: center;
+    color: #999;
+    font-size: 14px;
+}
+
+.speed {
+    text-align: center;
+    font-size: 52px;
+    font-weight: bold;
+    margin: 3px 0 10px;
+}
+
+.speed span {
+    font-size: 20px;
+    color: #888;
+}
+
+input[type="range"] {
+    width: 100%;
+    height: 35px;
+    margin: 0;
+    accent-color: #00e676;
+    cursor: pointer;
+}
+
+
+.speed-presets {
+    display: grid;
+    grid-template-columns:
+        repeat(5, 1fr);
+
+    gap: 7px;
+    margin-top: 8px;
+}
+
+.speed-presets button {
+    background: #242424;
+    color: #ddd;
+    border: 0;
+    border-radius: 9px;
+    padding: 10px 2px;
+    font-size: 13px;
+}
+
+.speed-presets button:active {
+    background: #333;
+}
+
+
+/* ============================================================
+   モーター操作
+============================================================ */
+
+.control-title {
+    text-align: center;
+    color: #999;
+    margin-bottom: 14px;
+}
+
+
+.drive-buttons {
+    display: grid;
+    grid-template-columns:
+        1fr 1fr;
+
+    gap: 12px;
+}
+
+
+.drive {
+    height: 150px;
+
+    border: 0;
+    border-radius: 18px;
+
+    font-size: 23px;
+    font-weight: bold;
+
+    touch-action: none;
+    user-select: none;
+    -webkit-user-select: none;
+}
+
+
+.forward {
+    background: #00c853;
+    color: #001b0b;
+}
+
+.backward {
+    background: #2979ff;
+    color: white;
+}
+
+
+.drive.active {
+    transform: scale(.96);
+    filter: brightness(1.25);
+}
+
+
+.stop {
+    width: 100%;
+    height: 70px;
+
+    margin-top: 12px;
+
+    border: 0;
+    border-radius: 16px;
+
+    background: #ff1744;
+    color: white;
+
+    font-size: 22px;
+    font-weight: bold;
+
+    touch-action: manipulation;
+}
+
+
+.stop:active {
+    transform: scale(.97);
+    filter: brightness(1.2);
+}
+
+
+/* ============================================================
+   状態表示
+============================================================ */
+
+.motor-state {
+    text-align: center;
+    margin-top: 17px;
+    color: #888;
+    font-size: 14px;
+}
+
+.motor-state strong {
+    color: white;
+    font-size: 18px;
+}
+
+
+/* ============================================================
+   未接続表示
+============================================================ */
+
+.overlay {
+    position: fixed;
+    inset: 0;
+
+    display: flex;
+    align-items: center;
+    justify-content: center;
+
+    background: rgba(0,0,0,.75);
+
+    z-index: 100;
+
+    backdrop-filter: blur(4px);
+}
+
+.overlay-box {
+    text-align: center;
+}
+
+.spinner {
+    width: 42px;
+    height: 42px;
+
+    margin: 0 auto 15px;
+
+    border: 4px solid #333;
+    border-top-color: #00e676;
+
+    border-radius: 50%;
+
+    animation:
+        spin .8s linear infinite;
+}
+
+@keyframes spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+
+/* ============================================================
+   再接続
+============================================================ */
+
+.retry {
+    display: none;
+
+    margin-top: 15px;
+
+    background: #00c853;
+    color: black;
+
+    border: 0;
+    border-radius: 10px;
+
+    padding: 12px 25px;
+
+    font-size: 15px;
+    font-weight: bold;
+}
+
+
+/* ============================================================
+   スマホ
+============================================================ */
+
+@media (max-width: 380px) {
+
+    .container {
+        padding: 12px;
+    }
+
+    .card {
+        padding: 15px;
+    }
+
+    .drive {
+        height: 130px;
+        font-size: 20px;
+    }
+
+    .speed {
+        font-size: 45px;
+    }
+
+}
+
+</style>
+
+</head>
+
+
+<body>
+
+
+<div class="container">
+
+
+    <!-- =====================================================
+         ヘッダー
+    ====================================================== -->
+
+    <div class="header">
+
+        <div class="title">
+            ⚙️ Motor
+        </div>
+
+        <div
+            id="connection"
+            class="connection"
+        >
+
+            <div class="connection-dot"></div>
+
+            <span id="connectionText">
+                接続中
+            </span>
+
+        </div>
+
+    </div>
+
+
+
+    <!-- =====================================================
+         速度
+    ====================================================== -->
+
+    <div class="card">
+
+        <div class="speed-title">
+            SPEED
+        </div>
+
+        <div class="speed">
+
+            <span id="speed">
+                50
+            </span>
+
+            <span>
+                %
+            </span>
+
+        </div>
+
+
+        <input
+            id="speedSlider"
+            type="range"
+            min="0"
+            max="100"
+            value="50"
+        >
+
+
+        <div class="speed-presets">
+
+            <button data-speed="10">
+                10%
+            </button>
+
+            <button data-speed="25">
+                25%
+            </button>
+
+            <button data-speed="50">
+                50%
+            </button>
+
+            <button data-speed="75">
+                75%
+            </button>
+
+            <button data-speed="100">
+                100%
+            </button>
+
+        </div>
+
+    </div>
+
+
+
+    <!-- =====================================================
+         モーター
+    ====================================================== -->
+
+    <div class="card">
+
+        <div class="control-title">
+            押している間だけ回転
+        </div>
+
+
+        <div class="drive-buttons">
+
+
+            <button
+                id="forwardButton"
+                class="drive forward"
+            >
+
+                ▲
+
+                <br>
+
+                正転
+
+            </button>
+
+
+            <button
+                id="backwardButton"
+                class="drive backward"
+            >
+
+                ▼
+
+                <br>
+
+                逆転
+
+            </button>
+
+
+        </div>
+
+
+        <button
+            id="stopButton"
+            class="stop"
+        >
+
+            ■　停止
+
+        </button>
+
+
+        <div class="motor-state">
+
+            状態：
+
+            <strong id="motorState">
+                停止
+            </strong>
+
+        </div>
+
+    </div>
+
+
+</div>
+
+
+
+<!-- ==========================================================
+     接続中画面
+=========================================================== -->
+
+<div
+    id="overlay"
+    class="overlay"
+>
+
+    <div class="overlay-box">
+
+        <div class="spinner"></div>
+
+        <div id="overlayText">
+            モーターに接続しています…
+        </div>
+
+        <button
+            id="retryButton"
+            class="retry"
+        >
+            再接続
+        </button>
+
+    </div>
+
+</div>
+
+
+
+<script>
+
+
+/* ============================================================
+   MQTT設定
+============================================================ */
+
+/*
+    ここだけ変更すればOK
+*/
+
+const MQTT_SERVER =
+    "wss://broker.hivemq.com:8884/mqtt";
+
+
+const MQTT_TOPIC =
+    "chanpro/motor/001";
+
+
+/* ============================================================
+   MQTT
+============================================================ */
+
+let mqttClient = null;
+
+let connected = false;
+
+let currentSpeed = 50;
+
+let currentDirection = null;
+
+
+/* ============================================================
+   DOM
+============================================================ */
+
+const speedSlider =
+    document.getElementById(
+        "speedSlider"
+    );
+
+const speedText =
+    document.getElementById(
+        "speed"
+    );
+
+const motorState =
+    document.getElementById(
+        "motorState"
+    );
+
+const connection =
+    document.getElementById(
+        "connection"
+    );
+
+const connectionText =
+    document.getElementById(
+        "connectionText"
+    );
+
+const overlay =
+    document.getElementById(
+        "overlay"
+    );
+
+const overlayText =
+    document.getElementById(
+        "overlayText"
+    );
+
+const retryButton =
+    document.getElementById(
+        "retryButton"
+    );
+
+
+/* ============================================================
+   クライアントID
+============================================================ */
+
+const clientId =
+    "web-motor-" +
+    Math.random()
+        .toString(16)
+        .substring(2);
+
+
+/* ============================================================
+   接続
+============================================================ */
+
+function connectMQTT() {
+
+    overlay.style.display =
+        "flex";
+
+    retryButton.style.display =
+        "none";
+
+    overlayText.textContent =
+        "モーターに接続しています…";
+
+
+    connection.className =
+        "connection";
+
+    connectionText.textContent =
+        "接続中";
+
+
+    try {
+
+        mqttClient =
+            mqtt.connect(
+                MQTT_SERVER,
+                {
+
+                    clientId:
+                        clientId,
+
+                    clean:
+                        true,
+
+                    connectTimeout:
+                        5000,
+
+                    reconnectPeriod:
+                        3000,
+
+                    keepalive:
+                        30
+
+                }
+            );
+
+
+        /* ----------------------------------------------------
+           接続成功
+        ---------------------------------------------------- */
+
+        mqttClient.on(
+            "connect",
+            function() {
+
+                connected = true;
+
+
+                connection.className =
+                    "connection connected";
+
+                connectionText.textContent =
+                    "接続済み";
+
+
+                overlay.style.display =
+                    "none";
+
+
+                console.log(
+                    "MQTT connected"
+                );
+
+            }
+        );
+
+
+        /* ----------------------------------------------------
+           切断
+        ---------------------------------------------------- */
+
+        mqttClient.on(
+            "close",
+            function() {
+
+                connected = false;
+
+
+                /*
+                    モーター停止
+                */
+
+                stopMotor(false);
+
+
+                connection.className =
+                    "connection";
+
+                connectionText.textContent =
+                    "再接続中";
+
+
+                overlay.style.display =
+                    "flex";
+
+                overlayText.textContent =
+                    "再接続しています…";
+
+
+                console.log(
+                    "MQTT disconnected"
+                );
+
+            }
+        );
+
+
+        /* ----------------------------------------------------
+           エラー
+        ---------------------------------------------------- */
+
+        mqttClient.on(
+            "error",
+            function(error) {
+
+                console.error(
+                    error
+                );
+
+
+                connection.className =
+                    "connection error";
+
+                connectionText.textContent =
+                    "接続エラー";
+
+            }
+        );
+
+
+    } catch(error) {
+
+        console.error(
+            error
+        );
+
+
+        showConnectionError();
+
+    }
+
+}
+
+
+/* ============================================================
+   接続失敗
+============================================================ */
+
+function showConnectionError() {
+
+    connected = false;
+
+
+    overlay.style.display =
+        "flex";
+
+
+    overlayText.textContent =
+        "接続できませんでした";
+
+
+    retryButton.style.display =
+        "inline-block";
+
+
+    connection.className =
+        "connection error";
+
+
+    connectionText.textContent =
+        "未接続";
+
+}
+
+
+/* ============================================================
+   再接続
+============================================================ */
+
+retryButton.addEventListener(
+    "click",
+    function() {
+
+        if (mqttClient) {
+
+            try {
+                mqttClient.end(true);
+            } catch(e) {}
+
+        }
+
+        connectMQTT();
+
+    }
+);
+
+
+/* ============================================================
+   MQTT送信
+============================================================ */
+
+function publish(command) {
+
+    if (
+        !mqttClient ||
+        !connected
+    ) {
+
+        return false;
+
+    }
+
+
+    mqttClient.publish(
+        MQTT_TOPIC,
+        command,
+        {
+            qos: 0,
+            retain: false
+        }
+    );
+
+
+    console.log(
+        "MQTT:",
+        command
+    );
+
+
+    return true;
+
+}
+
+
+/* ============================================================
+   速度
+============================================================ */
+
+speedSlider.addEventListener(
+    "input",
+    function() {
+
+        currentSpeed =
+            Number(
+                speedSlider.value
+            );
+
+
+        speedText.textContent =
+            currentSpeed;
+
+
+        /*
+            回転中なら速度を即反映
+        */
+
+        if (currentDirection === "forward") {
+
+            publish(
+                "forward:" +
+                currentSpeed
+            );
+
+        }
+
+        if (currentDirection === "backward") {
+
+            publish(
+                "backward:" +
+                currentSpeed
+            );
+
+        }
+
+    }
+);
+
+
+/* ============================================================
+   プリセット
+============================================================ */
+
+document
+    .querySelectorAll(
+        "[data-speed]"
+    )
+    .forEach(
+        function(button) {
+
+            button.addEventListener(
+                "click",
+                function() {
+
+                    const speed =
+                        Number(
+                            button.dataset.speed
+                        );
+
+
+                    currentSpeed =
+                        speed;
+
+
+                    speedSlider.value =
+                        speed;
+
+
+                    speedText.textContent =
+                        speed;
+
+
+                    /*
+                        回転中なら即反映
+                    */
+
+                    if (
+                        currentDirection ===
+                        "forward"
+                    ) {
+
+                        publish(
+                            "forward:" +
+                            speed
+                        );
+
+                    }
+
+                    if (
+                        currentDirection ===
+                        "backward"
+                    ) {
+
+                        publish(
+                            "backward:" +
+                            speed
+                        );
+
+                    }
+
+                }
+            );
+
+        }
+    );
+
+
+/* ============================================================
+   正転開始
+============================================================ */
+
+function startForward() {
+
+    if (!connected) {
+        return;
+    }
+
+
+    currentDirection =
+        "forward";
+
+
+    publish(
+        "forward:" +
+        currentSpeed
+    );
+
+
+    motorState.textContent =
+        "正転 " +
+        currentSpeed +
+        "%";
+
+
+    document
+        .getElementById(
+            "forwardButton"
+        )
+        .classList.add(
+            "active"
+        );
+
+}
+
+
+/* ============================================================
+   逆転開始
+============================================================ */
+
+function startBackward() {
+
+    if (!connected) {
+        return;
+    }
+
+
+    currentDirection =
+        "backward";
+
+
+    publish(
+        "backward:" +
+        currentSpeed
+    );
+
+
+    motorState.textContent =
+        "逆転 " +
+        currentSpeed +
+        "%";
+
+
+    document
+        .getElementById(
+            "backwardButton"
+        )
+        .classList.add(
+            "active"
+        );
+
+}
+
+
+/* ============================================================
+   停止
+============================================================ */
+
+function stopMotor(
+    sendCommand = true
+) {
+
+    currentDirection =
+        null;
+
+
+    if (
+        sendCommand &&
+        connected
+    ) {
+
+        publish(
+            "stop"
+        );
+
+    }
+
+
+    motorState.textContent =
+        "停止";
+
+
+    document
+        .getElementById(
+            "forwardButton"
+        )
+        .classList.remove(
+            "active"
+        );
+
+
+    document
+        .getElementById(
+            "backwardButton"
+        )
+        .classList.remove(
+            "active"
+        );
+
+}
+
+
+/* ============================================================
+   押している間だけ正転
+============================================================ */
+
+const forwardButton =
+    document.getElementById(
+        "forwardButton"
+    );
+
+
+forwardButton.addEventListener(
+    "pointerdown",
+    function(event) {
+
+        event.preventDefault();
+
+        forwardButton.setPointerCapture(
+            event.pointerId
+        );
+
+        startForward();
+
+    }
+);
+
+
+forwardButton.addEventListener(
+    "pointerup",
+    function(event) {
+
+        event.preventDefault();
+
+        stopMotor();
+
+    }
+);
+
+
+forwardButton.addEventListener(
+    "pointercancel",
+    function() {
+
+        stopMotor();
+
+    }
+);
+
+
+/* ============================================================
+   押している間だけ逆転
+============================================================ */
+
+const backwardButton =
+    document.getElementById(
+        "backwardButton"
+    );
+
+
+backwardButton.addEventListener(
+    "pointerdown",
+    function(event) {
+
+        event.preventDefault();
+
+        backwardButton.setPointerCapture(
+            event.pointerId
+        );
+
+        startBackward();
+
+    }
+);
+
+
+backwardButton.addEventListener(
+    "pointerup",
+    function(event) {
+
+        event.preventDefault();
+
+        stopMotor();
+
+    }
+);
+
+
+backwardButton.addEventListener(
+    "pointercancel",
+    function() {
+
+        stopMotor();
+
+    }
+);
+
+
+/* ============================================================
+   停止ボタン
+============================================================ */
+
+document
+    .getElementById(
+        "stopButton"
+    )
+    .addEventListener(
+        "click",
+        function() {
+
+            stopMotor();
+
+        }
+    );
+
+
+/* ============================================================
+   ページを閉じる
+============================================================ */
+
+window.addEventListener(
+    "beforeunload",
+    function() {
+
+        if (
+            mqttClient &&
+            connected
+        ) {
+
+            try {
+
+                mqttClient.publish(
+                    MQTT_TOPIC,
+                    "stop",
+                    {
+                        qos: 0,
+                        retain: false
+                    }
+                );
+
+            } catch(e) {}
+
+        }
+
+    }
+);
+
+
+/* ============================================================
+   キーボード操作
+============================================================ */
+
+/*
+    PCからも操作可能
+
+    ↑ = 正転
+    ↓ = 逆転
+    Space = 停止
+*/
+
+document.addEventListener(
+    "keydown",
+    function(event) {
+
+        if (event.repeat) {
+            return;
+        }
+
+
+        if (
+            event.key ===
+            "ArrowUp"
+        ) {
+
+            event.preventDefault();
+
+            startForward();
+
+        }
+
+
+        if (
+            event.key ===
+            "ArrowDown"
+        ) {
+
+            event.preventDefault();
+
+            startBackward();
+
+        }
+
+
+        if (
+            event.code ===
+            "Space"
+        ) {
+
+            event.preventDefault();
+
+            stopMotor();
+
+        }
+
+    }
+);
+
+
+document.addEventListener(
+    "keyup",
+    function(event) {
+
+        if (
+            event.key ===
+            "ArrowUp"
+        ) {
+
+            stopMotor();
+
+        }
+
+
+        if (
+            event.key ===
+            "ArrowDown"
+        ) {
+
+            stopMotor();
+
+        }
+
+    }
+);
+
+
+/* ============================================================
+   起動時に自動接続
+============================================================ */
+
+window.addEventListener(
+    "load",
+    function() {
+
+        connectMQTT();
+
+    }
+);
+
+</script>
+
+</body>
+
+</html>
